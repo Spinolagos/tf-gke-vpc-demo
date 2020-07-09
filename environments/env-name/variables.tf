@@ -9,12 +9,12 @@ variable "region" {
   default = "us-east4"
 }
 variable "enable_google" {
-  type = bool
+  type    = bool
   default = true
 }
 #GKE de integración
 variable "cluster_name" {
-    default = "gke-name"
+  default = "gke-name"
 }
 variable "initial_node_count" {
   default = 2
@@ -73,6 +73,9 @@ variable "network_name" {
 variable "subnetwork_name" {
   default = "subnet"
 }
+variable ip_cidr_range {
+  default = "10.10.90.0/24"
+}
 # NAT
 variable "router_name" {
     default = "routername"
@@ -92,4 +95,3 @@ variable "log_config_filter" {
 variable "log_config_enable" {
     default = false
 }
-

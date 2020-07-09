@@ -1,12 +1,9 @@
-# terraform-gke-vpc
+## Requirements
 
 IMPORTANT: Add to gke master firewall rules this ports: 8443,8080,9443,15017,15012 
-## Requirements
 
 | Name | Version |
 |------|---------|
-| azurerm | 1.35 |
-| gitlab | 2.10.0 |
 | google | 3.1 |
 
 ## Providers
@@ -25,6 +22,7 @@ IMPORTANT: Add to gke master firewall rules this ports: 8443,8080,9443,15017,150
 | enable\_google | n/a | `bool` | `true` | no |
 | image\_type | n/a | `string` | `"COS"` | no |
 | initial\_node\_count | n/a | `number` | `2` | no |
+| ip\_cidr\_range | n/a | `string` | `"10.10.90.0/24"` | no |
 | log\_config\_enable | n/a | `bool` | `false` | no |
 | log\_config\_filter | n/a | `string` | `"ERRORS_ONLY"` | no |
 | machine\_type | n/a | `string` | `"n1-standard-4"` | no |

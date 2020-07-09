@@ -23,12 +23,12 @@ module "gke" {
 }
 
 data "template_file" "kubeconfig" {
- count    = var.enable_google ? 1 : 0
+ count    = "${var.enable_google}" ? 1 : 0
  template = file("kubeconfig-template.yml")
  vars = {
-   CA_CERTIFICATE   = module.gke.cluster_ca_certificate
-   CLUSTER_API_URL  = module.gke.endpoint
-   CLUSTER_NAME     = module.gke.name
+   CA_CERTIFICATE   = "${module.gke.cluster_ca_certificate}"
+   CLUSTER_API_URL  = "${module.gke.endpoint}"
+   CLUSTER_NAME     = "${module.gke.name}"
  }
 }
 
@@ -43,7 +43,7 @@ resource "google_compute_subnetwork" "subnet" {
   name          = "${var.subnetwork_name}"
   region        = "${var.region}"
   network       = "${module.vpc.private_self_link}"
-  ip_cidr_range = "10.10.90.0/24"
+  ip_cidr_range = "${var.ip_cidr_range}"
 }
 
 #Cloud Nat
