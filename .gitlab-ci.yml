@@ -1,0 +1,205 @@
+# Imagen base
+image:
+    name: hashicorp/terraform:0.12.13
+    entrypoint:
+      - '/usr/bin/env'
+      - 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+# Definir los stages del Pipeline
+stages:
+  - validate
+  - merge_request
+  - preplan
+  - plan
+  - apply
+  - destroy
+
+# Variables de entorno locales
+variables:
+  TF_PLAN: plan.tfplan
+
+# Cache para todos los jobs
+cache:
+  paths:
+    - .terraform
+
+# template de terraform uat para before script
+.job_template: &job_tf_uat_bs
+  before_script:
+    # Inicializando las variables
+    - echo -e "machine gitlab.com\nlogin gitlab-ci-token\npassword $TERRAFORM_TOKEN" > ~/.netrc
+    - echo "Obteniendo la llave de acceso a GCP"
+    - echo "entrando a la carpeta uat"
+    - cd environments/uat/
+    - cat $TERRAFORM_CREDENTIAL_PROJECT_UAT > service_account.json
+    - cat $TERRAFORM_BACKEND_BUCKET > service_account.json
+    - echo "seteando workspace"
+    - export WORKSPACE=uat
+    - echo "Inicializando y validando Terraform"
+    - terraform --version
+    - terraform init 
+    - terraform workspace new $WORKSPACE || terraform workspace select $WORKSPACE
+
+    # template de terraform para script del merge request
+.job_template: &job_tf_mr_scr
+  script:
+    - apk add --update-cache --upgrade curl
+    - echo "Planificar la construccion de Infra en Terraform"
+    - terraform init
+    - terraform plan -input=false -out $TF_PLAN -lock=false
+    - echo \`\`\`diff > plan.txt
+    - terraform show -no-color $TF_PLAN | tee -a plan.txt
+    - echo \`\`\` >> plan.txt
+    - sed -i -e 's/  +/+/g' plan.txt
+    - sed -i -e 's/  ~/~/g' plan.txt
+    - sed -i -e 's/  -/-/g' plan.txt
+    - sed -i -e ':a;N;$!ba;s/\n\n/\n/g' plan.txt
+    # - sed -i -e ':a;N;$!ba;s/\n/\\n\\n/g' plan.txt
+    - cat plan.txt
+    - MR_DESCRIPTION=$(cat plan.txt)
+    - >-
+      curl -X POST -g -H "PRIVATE-TOKEN: ${GITLAB_PRIVATE_TOKEN}" 
+      --data-urlencode "body=${MR_DESCRIPTION}" 
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}/notes"
+
+# template de terraform para el job de destroy
+
+.job_template: &job_tf_dst_uat_bs
+    before_script:
+      - echo "Obteniendo la llave de acceso a GCP"
+      - echo $GCS_KEY > service_account.json
+      - echo "entrando a la carpeta uat"
+      - cd environments/uat/
+      - echo "seteando workspace"
+      - export WORKSPACE=uat
+      - terraform init
+      - terraform workspace select $WORKSPACE
+      - echo "Plan para destruir la Infra"
+      - terraform plan -input=false -destroy -out $TF_PLAN
+# Job para validar los scripts de terraform para dev
+
+validate:uat:
+  <<: *job_tf_uat_bs
+  stage: validate
+  script:
+    - terraform validate
+  only:
+    refs:
+      - /uat\/.*/
+    changes:
+      - environments/uat/*
+      - modules/**/*
+  tags:
+    - docker
+  except:
+    refs:
+      - master*job_tf_uat_bs
+    variables:
+      - $DISABLE_VALIDATE == "true"
+      # - $CI_COMMIT_MESSAGE =~ /Merge branch/
+
+Merge Request:
+    image: clmdevops/alpine:3.7-ssh
+    dependencies:
+       - validate:qa
+    tags:
+        - docker
+    variables:
+      # GIT_STRATEGY: none # We do not need a clone of the GIT repository to create a Merge Request
+      TARGET_BRANCH: 'master'
+      REMOVE_SOURCE_BRANCH: 'true'
+      MR_DESCRIPTION: 'Revisar posibles cambios a realizar en la infraestructura.'
+    stage: merge_request
+    script:
+        - chmod +x ./merge_request.sh
+        - ./merge_request.sh
+    only:
+      changes:
+        - environments/uat/*
+    except:
+      refs:
+        - master
+
+# Job para verificar el plan de infra de los scripts de terraform
+
+preplan:uat:
+  <<: *job_tf_uat_bs
+  <<: *job_tf_mr_scr
+  stage: preplan
+  artifacts:
+    name: plan-uat
+    paths:
+      - environments/uat/$TF_PLAN
+    # expire_in: 30 days
+  only:
+    refs:
+      - merge_requests
+    variables:
+      - $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /uat\/.*/
+  except:
+    variables:
+      - $DISABLE_PREPLAN == "true"
+# Job para confirmar el plan de infra de los scripts de terraform
+plan:uat:
+  <<: *job_tf_uat_bs
+  stage: plan
+  script:
+    - terraform init
+    - echo "Planificar la construccion de Infra en Terraform"
+    - terraform plan -input=false -out $TF_PLAN -lock=false
+  artifacts:
+    name: plan-uat
+    paths:
+      - environments/uat/$TF_PLAN
+  only:
+    refs:
+      - master
+    changes:
+      - environments/uat/*
+      - modules/**/*
+  except:
+    variables:
+      - $DISABLE_PLAN == "true"
+
+# Job para aplicar el plan de infra de los scripts de terraform
+apply:uat:
+  <<: *job_tf_uat_bs
+  stage: apply
+  when: manual
+  dependencies:
+    - plan:uat
+  script:   
+    - terraform init
+    - echo "Construir la Infra con Terraform"
+    - terraform apply -input=false -auto-approve $TF_PLAN
+  tags:
+    - docker
+  only:
+    refs:
+      - master
+    changes:
+      - environments/uat/*
+      - modules/**/*
+  except:
+    variables:
+      - $DISABLE_APPLY == "true"
+
+#Jobs de terraform para destruir la infraestructura
+
+destroy:uat:
+  <<: *job_tf_dst_uat_bs
+  stage: destroy
+  when: manual
+  dependencies:
+    - apply:uat
+  script:   
+    - echo "Destruir la Infra con Terraform"
+    - terraform destroy -input=false -auto-approve 
+  tags:
+    - docker
+  only:
+    refs:
+      - master
+  except:
+    variables:
+      - $DISABLE_DESTROY == "true"
