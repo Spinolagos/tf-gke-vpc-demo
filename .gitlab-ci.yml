@@ -23,18 +23,18 @@ cache:
   paths:
     - .terraform
 
-# template de terraform uat para before script
-.job_template: &job_tf_uat_bs
+# template de terraform (env-name) para before script
+.job_template: &job_tf_(env-name)_bs
   before_script:
     # Inicializando las variables
     - echo -e "machine gitlab.com\nlogin gitlab-ci-token\npassword $TERRAFORM_TOKEN" > ~/.netrc
     - echo "Obteniendo la llave de acceso a GCP"
-    - echo "entrando a la carpeta uat"
-    - cd environments/uat/
-    - cat $TERRAFORM_CREDENTIAL_PROJECT_UAT > service_account.json
+    - echo "entrando a la carpeta (env-name)"
+    - cd environments/(env-name)/
+    - cat $TERRAFORM_CREDENTIAL_PROJECT_(env-name) > service_account.json
     - cat $TERRAFORM_BACKEND_BUCKET > service_account.json
     - echo "seteando workspace"
-    - export WORKSPACE=uat
+    - export WORKSPACE=(env-name)
     - echo "Inicializando y validando Terraform"
     - terraform --version
     - terraform init 
@@ -64,36 +64,36 @@ cache:
 
 # template de terraform para el job de destroy
 
-.job_template: &job_tf_dst_uat_bs
+.job_template: &job_tf_dst_(env-name)_bs
     before_script:
       - echo "Obteniendo la llave de acceso a GCP"
       - echo $GCS_KEY > service_account.json
-      - echo "entrando a la carpeta uat"
-      - cd environments/uat/
+      - echo "entrando a la carpeta (env-name)"
+      - cd environments/(env-name)/
       - echo "seteando workspace"
-      - export WORKSPACE=uat
+      - export WORKSPACE=(env-name)
       - terraform init
       - terraform workspace select $WORKSPACE
       - echo "Plan para destruir la Infra"
       - terraform plan -input=false -destroy -out $TF_PLAN
 # Job para validar los scripts de terraform para dev
 
-validate:uat:
-  <<: *job_tf_uat_bs
+validate:(env-name):
+  <<: *job_tf_(env-name)_bs
   stage: validate
   script:
     - terraform validate
   only:
     refs:
-      - /uat\/.*/
+      - /(env-name)\/.*/
     changes:
-      - environments/uat/*
+      - environments/(env-name)/*
       - modules/**/*
   tags:
     - docker
   except:
     refs:
-      - master*job_tf_uat_bs
+      - master*job_tf_(env-name)_bs
     variables:
       - $DISABLE_VALIDATE == "true"
       # - $CI_COMMIT_MESSAGE =~ /Merge branch/
@@ -115,59 +115,59 @@ Merge Request:
         - ./merge_request.sh
     only:
       changes:
-        - environments/uat/*
+        - environments/(env-name)/*
     except:
       refs:
         - master
 
 # Job para verificar el plan de infra de los scripts de terraform
 
-preplan:uat:
-  <<: *job_tf_uat_bs
+preplan:(env-name):
+  <<: *job_tf_(env-name)_bs
   <<: *job_tf_mr_scr
   stage: preplan
   artifacts:
-    name: plan-uat
+    name: plan-(env-name)
     paths:
-      - environments/uat/$TF_PLAN
+      - environments/(env-name)/$TF_PLAN
     # expire_in: 30 days
   only:
     refs:
       - merge_requests
     variables:
-      - $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /uat\/.*/
+      - $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /(env-name)\/.*/
   except:
     variables:
       - $DISABLE_PREPLAN == "true"
 # Job para confirmar el plan de infra de los scripts de terraform
-plan:uat:
-  <<: *job_tf_uat_bs
+plan:(env-name):
+  <<: *job_tf_(env-name)_bs
   stage: plan
   script:
     - terraform init
     - echo "Planificar la construccion de Infra en Terraform"
     - terraform plan -input=false -out $TF_PLAN -lock=false
   artifacts:
-    name: plan-uat
+    name: plan-(env-name)
     paths:
-      - environments/uat/$TF_PLAN
+      - environments/(env-name)/$TF_PLAN
   only:
     refs:
       - master
     changes:
-      - environments/uat/*
+      - environments/(env-name)/*
       - modules/**/*
   except:
     variables:
       - $DISABLE_PLAN == "true"
 
 # Job para aplicar el plan de infra de los scripts de terraform
-apply:uat:
-  <<: *job_tf_uat_bs
+apply:(env-name):
+  <<: *job_tf_(env-name)_bs
   stage: apply
   when: manual
   dependencies:
-    - plan:uat
+    - plan:(env-name)
   script:   
     - terraform init
     - echo "Construir la Infra con Terraform"
@@ -178,7 +178,7 @@ apply:uat:
     refs:
       - master
     changes:
-      - environments/uat/*
+      - environments/(env-name)/*
       - modules/**/*
   except:
     variables:
@@ -186,12 +186,12 @@ apply:uat:
 
 #Jobs de terraform para destruir la infraestructura
 
-destroy:uat:
-  <<: *job_tf_dst_uat_bs
+destroy:(env-name):
+  <<: *job_tf_dst_(env-name)_bs
   stage: destroy
   when: manual
   dependencies:
-    - apply:uat
+    - apply:(env-name)
   script:   
     - echo "Destruir la Infra con Terraform"
     - terraform destroy -input=false -auto-approve 
