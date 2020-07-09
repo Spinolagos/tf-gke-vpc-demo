@@ -73,4 +73,23 @@ variable "network_name" {
 variable "subnetwork_name" {
   default = "subnet"
 }
+# NAT
+variable "router_name" {
+    default = "routername"
+}
+variable "router_nat_name" {
+    default = "natname"
+}
+variable "nat_ip_allocate_option" {
+    default = "AUTO_ONLY"
+}
+variable "source_subnetwork_ip_ranges_to_nat" {
+    default = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+}
+variable "log_config_filter" {
+    default = "ERRORS_ONLY"
+}
+variable "log_config_enable" {
+    default = false
+}
 

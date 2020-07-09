@@ -42,5 +42,16 @@ resource "google_compute_subnetwork" "subnet" {
   network       = "${module.vpc.private_self_link}"
   ip_cidr_range = "10.10.90.0/24"
 }
-
+#Cloud Nat
+module "cloud_nat" {
+  source                              = "../../nat"
+  router_name                         = "${var.router_name}"
+  region                              = "${var.region}"
+  network                             = "${module.vpc.name}"
+  router_nat_name                     = "${var.router_nat_name}"
+  nat_ip_allocate_option              = "${var.nat_ip_allocate_option}"
+  source_subnetwork_ip_ranges_to_nat  = "${var.source_subnetwork_ip_ranges_to_nat}"
+  log_config_filter                   = "${var.log_config_filter}"
+  log_config_enable                   = "${var.log_config_enable}"
+}
 
